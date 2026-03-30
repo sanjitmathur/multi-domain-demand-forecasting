@@ -1,0 +1,13 @@
+.worktrees/
+__pycache__/
+*.pyc
+.env
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+data/*.csv
+!data/.gitkeep
+models/saved/*.joblib
+*.ipynb_checkpoints/
