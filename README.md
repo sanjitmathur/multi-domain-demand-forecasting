@@ -1,5 +1,7 @@
 # Multi-Domain Demand Forecasting
 
+**Live Demo:** [domain-demand-forecasting.streamlit.app](https://domain-demand-forecasting.streamlit.app/)
+
 Demand forecasting system using ensemble learning across 3 domains:
 
 - **Airline Bookings** — predict flight demand by fare class
