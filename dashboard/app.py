@@ -12,6 +12,8 @@ pg = st.navigation([
     st.Page("pages/3_Feature_Importance.py", title="Feature Importance", icon="🔍"),
     st.Page("pages/4_Uncertainty_Analysis.py", title="Uncertainty Analysis", icon="📉"),
     st.Page("pages/5_System_Design.py", title="System Design", icon="⚙️"),
+    st.Page("pages/6_Dataset_Diagnostics.py", title="Dataset Diagnostics", icon="🧪"),
+    st.Page("pages/7_Ablation_Study.py", title="Ablation Study", icon="🔬"),
 ])
 
 pg.run()
