@@ -86,5 +86,59 @@ ranking = ranking.sort_values("Combined", ascending=False).reset_index(drop=True
 ranking.index += 1
 st.dataframe(ranking, use_container_width=True)
 
-st.info("💡 **Interpretation**: High-importance lag/rolling features indicate strong autoregressive signal. "
+st.info("**Interpretation**: High-importance lag/rolling features indicate strong autoregressive signal. "
         "Temporal features (cyclical encodings) capture seasonality. Price/promo features drive cross-sectional variation.")
+
+# --- SHAP Summary ---
+st.divider()
+st.subheader("SHAP Feature Impact")
+st.caption("Mean absolute SHAP values — shows direction and magnitude of each feature's effect on predictions")
+
+import shap
+
+
+@st.cache_data
+def compute_shap(_model, domain, _feat_names):
+    eng_fns = {
+        "airline": (pd.read_csv(DATA_DIR / "airline_bookings.csv"), engineer_airline_features),
+        "ecommerce": (pd.read_csv(DATA_DIR / "ecommerce_demand.csv"), engineer_ecommerce_features),
+        "payment": (pd.read_csv(DATA_DIR / "payment_volume.csv"), engineer_payment_features),
+    }
+    df, eng_fn = eng_fns[domain]
+    features, _ = eng_fn(df)
+    split = int(len(features) * 0.8)
+    X_sample = features.iloc[split:].sample(n=min(200, len(features) - split), random_state=42)
+
+    explainer = shap.TreeExplainer(_model.xgb_model)
+    shap_values = explainer.shap_values(X_sample)
+    mean_abs = np.abs(shap_values).mean(axis=0)
+    return mean_abs, shap_values, X_sample
+
+
+shap_mean, shap_vals, X_sample = compute_shap(model, domain, names)
+
+# Bar chart of mean |SHAP|
+shap_df = pd.DataFrame({"feature": names, "mean_abs_shap": shap_mean})
+shap_df = shap_df.sort_values("mean_abs_shap", ascending=True).tail(15)
+fig = go.Figure(go.Bar(x=shap_df["mean_abs_shap"], y=shap_df["feature"], orientation="h",
+                       marker_color="#C084FC", opacity=0.85))
+fig.update_layout(title="SHAP Mean |Impact| (XGBoost)", template="plotly_dark", height=500,
+                  margin=dict(l=200), xaxis_title="Mean |SHAP value|")
+st.plotly_chart(fig, use_container_width=True)
+
+# Beeswarm-style: top features scatter
+st.caption("SHAP value distribution for top 10 features (each dot = one test sample)")
+top_idx = np.argsort(shap_mean)[-10:][::-1]
+import plotly.express as px
+
+rows = []
+for i in top_idx:
+    for j in range(len(X_sample)):
+        rows.append({"Feature": names[i], "SHAP Value": shap_vals[j, i],
+                      "Feature Value": X_sample.iloc[j, i]})
+scatter_df = pd.DataFrame(rows)
+fig2 = px.strip(scatter_df, x="SHAP Value", y="Feature", color="Feature Value",
+                orientation="h")
+fig2.update_coloraxes(colorscale="RdBu_r")
+fig2.update_layout(template="plotly_dark", height=450, showlegend=False)
+st.plotly_chart(fig2, use_container_width=True)
