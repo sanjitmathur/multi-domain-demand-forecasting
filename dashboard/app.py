@@ -122,9 +122,21 @@ def main():
 
     tab1, tab2, tab3 = st.tabs(["Airline Bookings", "E-Commerce Demand", "Payment Volume"])
 
+    METRICS_LEGEND = (
+        "**RMSE** = avg prediction error in original units (lower is better) | "
+        "**MAE** = avg absolute error (lower is better) | "
+        "**R\u00b2** = variance explained by model, 1.0 = perfect | "
+        "**RMSE %** = error as % of mean actual value"
+    )
+
     # ── Airline Tab ──
     with tab1:
         st.header("Airline Booking Forecasting")
+        st.caption(
+            "Predicts flight booking demand based on days until departure, fare class, and competitor pricing. "
+            "Uses an XGBoost + LightGBM ensemble with a ridge meta-learner. "
+            "The chart shows average actual vs predicted bookings grouped by departure window for the selected fare class."
+        )
         features, target = engineer_airline_features(airline_df)
         X_test, y_test, pred, xgb_p, lgbm_p, avg_p = prepare_domain(
             ensemble, "airline", features, target)
@@ -187,11 +199,17 @@ def main():
                 st.plotly_chart(fig, use_container_width=True)
 
         st.subheader("Model Comparison")
+        st.caption(METRICS_LEGEND)
         st.dataframe(metrics_table(y_test.values, xgb_p, lgbm_p, avg_p, pred["forecast"]), hide_index=True)
 
     # ── E-Commerce Tab ──
     with tab2:
         st.header("E-Commerce Demand Forecasting")
+        st.caption(
+            "Forecasts product demand by category using price, promotions, inventory levels, and seasonality. "
+            "An ensemble of XGBoost + LightGBM with a meta-learner combines predictions. "
+            "The chart shows average actual vs predicted demand grouped by price range for the selected category and promotion filter."
+        )
         features, target = engineer_ecommerce_features(ecom_df)
         X_test, y_test, pred, xgb_p, lgbm_p, avg_p = prepare_domain(
             ensemble, "ecommerce", features, target)
@@ -253,11 +271,17 @@ def main():
                 st.plotly_chart(fig, use_container_width=True)
 
         st.subheader("Model Comparison")
+        st.caption(METRICS_LEGEND)
         st.dataframe(metrics_table(y_test.values, xgb_p, lgbm_p, avg_p, pred["forecast"]), hide_index=True)
 
     # ── Payment Tab ──
     with tab3:
         st.header("Payment Volume Forecasting")
+        st.caption(
+            "Predicts transaction volume by hour and day of week using payment method, amount patterns, and temporal features. "
+            "Ensemble of XGBoost + LightGBM with meta-learner. "
+            "The chart shows average actual vs predicted volume by hour for the selected day."
+        )
         features, target = engineer_payment_features(payment_df)
         X_test, y_test, pred, xgb_p, lgbm_p, avg_p = prepare_domain(
             ensemble, "payment", features, target)
@@ -310,6 +334,7 @@ def main():
                 st.plotly_chart(fig, use_container_width=True)
 
         st.subheader("Model Comparison")
+        st.caption(METRICS_LEGEND)
         st.dataframe(metrics_table(y_test.values, xgb_p, lgbm_p, avg_p, pred["forecast"]), hide_index=True)
 
 

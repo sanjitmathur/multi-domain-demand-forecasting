@@ -26,6 +26,7 @@ def engineer_ecommerce_features(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Seri
         cat_df = add_trend_direction(cat_df, "quantity_sold", window=7)
         dfs.append(cat_df)
     df = pd.concat(dfs, ignore_index=True)
+    df = df.sort_values("timestamp").reset_index(drop=True)
 
     df["price_x_promotion"] = df["price"] * df["promotions"]
     df["inventory_x_trend"] = df["inventory_level"] * df["quantity_sold_trend"].fillna(0)
