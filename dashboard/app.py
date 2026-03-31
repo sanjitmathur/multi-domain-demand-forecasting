@@ -15,8 +15,6 @@ from src.features.airline_features import engineer_airline_features
 from src.features.ecommerce_features import engineer_ecommerce_features
 from src.features.payment_features import engineer_payment_features
 from src.evaluation.metrics import rmse, mae, r_squared, rmse_pct
-from api.schemas import AirlineRequest, ECommerceRequest, PaymentRequest
-from api.main import _build_airline_features, _build_ecommerce_features, _build_payment_features
 
 DATA_DIR = PROJECT_ROOT / "data"
 MODELS_DIR = PROJECT_ROOT / "models" / "saved"
@@ -37,81 +35,61 @@ def load_data():
     return airline, ecom, payment
 
 
-def sweep_predict(ensemble, domain, build_fn, requests):
-    """Run predictions for a list of requests and return arrays."""
-    frames = [build_fn(r) for r in requests]
-    X = pd.concat(frames, ignore_index=True)
-    result = ensemble.predict(domain, X)
-    return result
+@st.cache_data
+def prepare_domain(_ensemble, domain, features, target):
+    """Run predictions on test set once, return everything needed."""
+    n = len(features)
+    split = int(n * 0.8)
+    X_test = features.iloc[split:]
+    y_test = target.iloc[split:]
+    pred = _ensemble.predict(domain, X_test)
+    xgb_p = _ensemble.predict_single_xgb(domain, X_test)
+    lgbm_p = _ensemble.predict_single_lgbm(domain, X_test)
+    avg_p = _ensemble.predict_simple_avg(domain, X_test)
+    return X_test, y_test, pred, xgb_p, lgbm_p, avg_p
 
 
-def plot_sweep(x_vals, forecast, lower, upper, x_current, title, x_label, y_label):
-    """Plot forecast curve with confidence band and a vertical marker at current value."""
+def plot_grouped(x_vals, actual_means, pred_means, lower_means, upper_means,
+                 x_current, title, x_label, y_label, x_format=None):
+    """Plot actual vs predicted grouped by a parameter, with current selection marked."""
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
-        x=x_vals, y=upper, mode="lines", line=dict(width=0),
-        showlegend=False,
+        x=x_vals, y=upper_means, mode="lines", line=dict(width=0), showlegend=False,
     ))
     fig.add_trace(go.Scatter(
-        x=x_vals, y=lower, mode="lines", line=dict(width=0),
+        x=x_vals, y=lower_means, mode="lines", line=dict(width=0),
         fill="tonexty", fillcolor="rgba(68, 68, 255, 0.15)",
-        name="80% Confidence Band",
+        name="Confidence Band",
     ))
     fig.add_trace(go.Scatter(
-        x=x_vals, y=forecast, mode="lines",
-        name="Ensemble+Meta Forecast", line=dict(color="#4ECDC4", width=2.5),
+        x=x_vals, y=actual_means, mode="lines+markers",
+        name="Actual (avg)", line=dict(color="#FF6B6B", width=2.5),
+        marker=dict(size=5),
+    ))
+    fig.add_trace(go.Scatter(
+        x=x_vals, y=pred_means, mode="lines+markers",
+        name="Predicted (avg)", line=dict(color="#4ECDC4", width=2.5),
+        marker=dict(size=5),
     ))
 
-    # Marker at current slider value
-    idx = None
-    for i, v in enumerate(x_vals):
-        if v == x_current:
-            idx = i
-            break
-    if idx is not None:
+    # Mark current selection
+    if x_current is not None:
+        fig.add_vline(x=x_current, line_dash="dot", line_color="#FFD93D", opacity=0.7)
+        # Find nearest x value for annotation
+        idx = min(range(len(x_vals)), key=lambda i: abs(x_vals[i] - x_current))
         fig.add_trace(go.Scatter(
-            x=[x_current], y=[forecast[idx]],
-            mode="markers", marker=dict(color="#FF6B6B", size=14, symbol="diamond"),
-            name=f"Current ({x_label}={x_current})",
+            x=[x_vals[idx]], y=[pred_means[idx]],
+            mode="markers", marker=dict(color="#FFD93D", size=14, symbol="diamond"),
+            name=f"Selected",
         ))
-        # Vertical line
-        fig.add_vline(x=x_current, line_dash="dot", line_color="#FF6B6B", opacity=0.5)
 
+    fmt = x_format or {}
     fig.update_layout(
         title=title, xaxis_title=x_label, yaxis_title=y_label,
-        template="plotly_dark", height=420,
+        template="plotly_dark", height=450,
         legend=dict(orientation="h", yanchor="bottom", y=1.02),
-    )
-    return fig
-
-
-def plot_actual_vs_predicted(actual, predicted, lower, upper, title):
-    """Static test-set chart: actual vs predicted."""
-    fig = go.Figure()
-    x = list(range(len(actual)))
-
-    fig.add_trace(go.Scatter(
-        x=x, y=upper, mode="lines", line=dict(width=0), showlegend=False,
-    ))
-    fig.add_trace(go.Scatter(
-        x=x, y=lower, mode="lines", line=dict(width=0),
-        fill="tonexty", fillcolor="rgba(68, 68, 255, 0.1)",
-        name="80% Confidence Band",
-    ))
-    fig.add_trace(go.Scatter(
-        x=x, y=actual, mode="lines",
-        name="Actual", line=dict(color="#FF6B6B", width=1.5),
-    ))
-    fig.add_trace(go.Scatter(
-        x=x, y=predicted, mode="lines",
-        name="Predicted", line=dict(color="#4ECDC4", width=1.5),
-    ))
-
-    fig.update_layout(
-        title=title, xaxis_title="Test Sample", yaxis_title="Value",
-        template="plotly_dark", height=350,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        **fmt,
     )
     return fig
 
@@ -147,163 +125,192 @@ def main():
     # ── Airline Tab ──
     with tab1:
         st.header("Airline Booking Forecasting")
+        features, target = engineer_airline_features(airline_df)
+        X_test, y_test, pred, xgb_p, lgbm_p, avg_p = prepare_domain(
+            ensemble, "airline", features, target)
 
         col1, col2 = st.columns([2, 1])
+
         with col2:
             st.subheader("Parameters")
             fare_class = st.selectbox("Fare Class", ["Economy", "Business", "First"], key="a_fare")
-            comp_price = st.slider("Competitor Price ($)", 100, 3000, 300, step=50, key="a_comp")
             days_until = st.slider("Days Until Departure", 1, 180, 30, key="a_days")
 
-            # Single-point forecast at current slider
-            feat = _build_airline_features(AirlineRequest(
-                days_until_departure=days_until, fare_class=fare_class,
-                competitor_price=float(comp_price),
-            ))
-            result = ensemble.predict("airline", feat)
-            st.metric("Forecast", f"{result['forecast'][0]:.1f} bookings")
-            st.metric("Confidence", f"{result['confidence'][0]:.1%}")
-            st.caption(f"Range: [{result['lower_bound'][0]:.1f}, {result['upper_bound'][0]:.1f}]")
+            fare_map = {"Economy": 0, "Business": 1, "First": 2}
+            fc = fare_map[fare_class]
+
+            # Filter test data by fare class
+            mask = X_test["fare_class_encoded"] == fc
+            if mask.sum() > 0:
+                # Find closest days_until_departure
+                filtered_X = X_test[mask]
+                filtered_y = y_test[mask]
+                filtered_pred = pred["forecast"][mask.values]
+                filtered_lower = pred["lower_bound"][mask.values]
+                filtered_upper = pred["upper_bound"][mask.values]
+                filtered_conf = pred["confidence"][mask.values]
+
+                closest_idx = (filtered_X["days_until_departure"] - days_until).abs().idxmin()
+                i = filtered_X.index.get_loc(closest_idx)
+                st.metric("Forecast", f"{filtered_pred[i]:.1f} bookings")
+                st.metric("Actual", f"{filtered_y.iloc[i]:.0f} bookings")
+                st.metric("Confidence", f"{filtered_conf[i]:.1%}")
+                st.caption(f"Range: [{filtered_lower[i]:.1f}, {filtered_upper[i]:.1f}]")
+            else:
+                st.info("No test data for this fare class")
 
         with col1:
-            # Sweep: forecast vs days_until_departure
-            sweep_days = list(range(1, 181, 3))
-            reqs = [AirlineRequest(days_until_departure=d, fare_class=fare_class,
-                                   competitor_price=float(comp_price)) for d in sweep_days]
-            sw = sweep_predict(ensemble, "airline", _build_airline_features, reqs)
-            fig = plot_sweep(
-                sweep_days, sw["forecast"], sw["lower_bound"], sw["upper_bound"],
-                days_until, "Bookings vs Days Until Departure",
-                "Days Until Departure", "Predicted Bookings",
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            # Group by days_until_departure for selected fare class
+            mask = X_test["fare_class_encoded"] == fc
+            if mask.sum() > 0:
+                df_plot = pd.DataFrame({
+                    "days": X_test.loc[mask, "days_until_departure"].values,
+                    "actual": y_test[mask].values,
+                    "pred": pred["forecast"][mask.values],
+                    "lower": pred["lower_bound"][mask.values],
+                    "upper": pred["upper_bound"][mask.values],
+                })
+                # Bin days into groups for smoother plot
+                df_plot["days_bin"] = (df_plot["days"] // 5) * 5
+                grouped = df_plot.groupby("days_bin").mean().reset_index()
 
-        # Test-set accuracy section
-        with st.expander("Test Set: Actual vs Predicted"):
-            features, target = engineer_airline_features(airline_df)
-            split = int(len(features) * 0.8)
-            X_test, y_test = features.iloc[split:], target.iloc[split:]
-            pred_result = ensemble.predict("airline", X_test)
-            sl = min(200, len(y_test))
-            fig2 = plot_actual_vs_predicted(
-                y_test.values[:sl], pred_result["forecast"][:sl],
-                pred_result["lower_bound"][:sl], pred_result["upper_bound"][:sl],
-                "Airline: Actual vs Predicted (Test Set)",
-            )
-            st.plotly_chart(fig2, use_container_width=True)
+                fig = plot_grouped(
+                    grouped["days_bin"].tolist(),
+                    grouped["actual"].tolist(),
+                    grouped["pred"].tolist(),
+                    grouped["lower"].tolist(),
+                    grouped["upper"].tolist(),
+                    days_until,
+                    f"Bookings vs Days Until Departure ({fare_class})",
+                    "Days Until Departure", "Bookings",
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.subheader("Model Comparison")
-                xgb_p = ensemble.predict_single_xgb("airline", X_test)
-                lgbm_p = ensemble.predict_single_lgbm("airline", X_test)
-                avg_p = ensemble.predict_simple_avg("airline", X_test)
-                st.dataframe(metrics_table(y_test.values, xgb_p, lgbm_p, avg_p, pred_result["forecast"]), hide_index=True)
+        st.subheader("Model Comparison")
+        st.dataframe(metrics_table(y_test.values, xgb_p, lgbm_p, avg_p, pred["forecast"]), hide_index=True)
 
     # ── E-Commerce Tab ──
     with tab2:
         st.header("E-Commerce Demand Forecasting")
+        features, target = engineer_ecommerce_features(ecom_df)
+        X_test, y_test, pred, xgb_p, lgbm_p, avg_p = prepare_domain(
+            ensemble, "ecommerce", features, target)
 
         col1, col2 = st.columns([2, 1])
+
         with col2:
             st.subheader("Parameters")
             category = st.selectbox("Category",
-                ["Electronics", "Fashion", "Home & Kitchen", "Beauty", "Food & Grocery"], key="e_cat")
-            promo = st.checkbox("Promotion Active", key="e_promo")
-            price = st.slider("Price ($)", 5, 1000, 100, step=5, key="e_price")
+                ["Beauty", "Electronics", "Fashion", "Food & Grocery", "Home & Kitchen"], key="e_cat")
+            promo_filter = st.radio("Promotion", ["All", "Promo ON", "Promo OFF"], key="e_promo", horizontal=True)
 
-            feat = _build_ecommerce_features(ECommerceRequest(
-                product_category=category, price=float(price), promotion_active=promo,
-            ))
-            result = ensemble.predict("ecommerce", feat)
-            st.metric("Forecast", f"{result['forecast'][0]:.0f} units")
-            st.metric("Confidence", f"{result['confidence'][0]:.1%}")
-            st.caption(f"Range: [{result['lower_bound'][0]:.0f}, {result['upper_bound'][0]:.0f}]")
+            cat_map = {"Beauty": 0, "Electronics": 1, "Fashion": 2, "Food & Grocery": 3, "Home & Kitchen": 4}
+            cc = cat_map[category]
+
+            mask = X_test["category_encoded"] == cc
+            if promo_filter == "Promo ON":
+                mask = mask & (X_test["promotions"] == 1)
+            elif promo_filter == "Promo OFF":
+                mask = mask & (X_test["promotions"] == 0)
+
+            if mask.sum() > 0:
+                filtered_pred = pred["forecast"][mask.values]
+                filtered_y = y_test[mask]
+                filtered_conf = pred["confidence"][mask.values]
+                avg_forecast = np.mean(filtered_pred)
+                avg_actual = np.mean(filtered_y.values)
+                st.metric("Avg Forecast", f"{avg_forecast:.0f} units")
+                st.metric("Avg Actual", f"{avg_actual:.0f} units")
+                st.metric("Avg Confidence", f"{np.mean(filtered_conf):.1%}")
+            else:
+                st.info("No test data for this filter")
 
         with col1:
-            # Sweep: forecast vs price
-            sweep_prices = list(range(5, 1001, 10))
-            reqs = [ECommerceRequest(product_category=category, price=float(p),
-                                     promotion_active=promo) for p in sweep_prices]
-            sw = sweep_predict(ensemble, "ecommerce", _build_ecommerce_features, reqs)
-            fig = plot_sweep(
-                sweep_prices, sw["forecast"], sw["lower_bound"], sw["upper_bound"],
-                price, f"Demand vs Price ({category}, {'Promo ON' if promo else 'Promo OFF'})",
-                "Price ($)", "Predicted Units Sold",
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            if mask.sum() > 0:
+                df_plot = pd.DataFrame({
+                    "price": X_test.loc[mask, "price"].values,
+                    "actual": y_test[mask].values,
+                    "pred": pred["forecast"][mask.values],
+                    "lower": pred["lower_bound"][mask.values],
+                    "upper": pred["upper_bound"][mask.values],
+                })
+                # Bin prices
+                price_range = df_plot["price"].max() - df_plot["price"].min()
+                bin_size = max(1, price_range / 20)
+                df_plot["price_bin"] = (df_plot["price"] / bin_size).round() * bin_size
+                grouped = df_plot.groupby("price_bin").mean().reset_index()
 
-        with st.expander("Test Set: Actual vs Predicted"):
-            features, target = engineer_ecommerce_features(ecom_df)
-            split = int(len(features) * 0.8)
-            X_test, y_test = features.iloc[split:], target.iloc[split:]
-            pred_result = ensemble.predict("ecommerce", X_test)
-            sl = min(200, len(y_test))
-            fig2 = plot_actual_vs_predicted(
-                y_test.values[:sl], pred_result["forecast"][:sl],
-                pred_result["lower_bound"][:sl], pred_result["upper_bound"][:sl],
-                "E-Commerce: Actual vs Predicted (Test Set)",
-            )
-            st.plotly_chart(fig2, use_container_width=True)
+                fig = plot_grouped(
+                    grouped["price_bin"].tolist(),
+                    grouped["actual"].tolist(),
+                    grouped["pred"].tolist(),
+                    grouped["lower"].tolist(),
+                    grouped["upper"].tolist(),
+                    None,
+                    f"Demand vs Price ({category}, {promo_filter})",
+                    "Price ($)", "Units Sold",
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.subheader("Model Comparison")
-                xgb_p = ensemble.predict_single_xgb("ecommerce", X_test)
-                lgbm_p = ensemble.predict_single_lgbm("ecommerce", X_test)
-                avg_p = ensemble.predict_simple_avg("ecommerce", X_test)
-                st.dataframe(metrics_table(y_test.values, xgb_p, lgbm_p, avg_p, pred_result["forecast"]), hide_index=True)
+        st.subheader("Model Comparison")
+        st.dataframe(metrics_table(y_test.values, xgb_p, lgbm_p, avg_p, pred["forecast"]), hide_index=True)
 
     # ── Payment Tab ──
     with tab3:
         st.header("Payment Volume Forecasting")
+        features, target = engineer_payment_features(payment_df)
+        X_test, y_test, pred, xgb_p, lgbm_p, avg_p = prepare_domain(
+            ensemble, "payment", features, target)
 
         col1, col2 = st.columns([2, 1])
+
         with col2:
             st.subheader("Parameters")
             dow = st.selectbox("Day of Week", list(range(7)),
                 format_func=lambda x: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][x], key="p_dow")
             hour = st.slider("Hour of Day", 0, 23, 10, key="p_hour")
 
-            feat = _build_payment_features(PaymentRequest(hour_of_day=hour, day_of_week=dow))
-            result = ensemble.predict("payment", feat)
-            st.metric("Forecast", f"{result['forecast'][0]:.0f} transactions")
-            st.metric("Confidence", f"{result['confidence'][0]:.1%}")
-            st.caption(f"Range: [{result['lower_bound'][0]:.0f}, {result['upper_bound'][0]:.0f}]")
+            mask = X_test["day_of_week"] == dow
+            if mask.sum() > 0:
+                # Get samples at this hour
+                hour_mask = mask & (X_test["hour_of_day"] == hour)
+                if hour_mask.sum() > 0:
+                    hp = pred["forecast"][hour_mask.values]
+                    ha = y_test[hour_mask].values
+                    hc = pred["confidence"][hour_mask.values]
+                    st.metric("Avg Forecast", f"{np.mean(hp):.0f} txns")
+                    st.metric("Avg Actual", f"{np.mean(ha):.0f} txns")
+                    st.metric("Confidence", f"{np.mean(hc):.1%}")
+                else:
+                    st.info("No test data for this hour+day combo")
 
         with col1:
-            # Sweep: forecast vs hour_of_day
-            sweep_hours = list(range(0, 24))
-            reqs = [PaymentRequest(hour_of_day=h, day_of_week=dow) for h in sweep_hours]
-            sw = sweep_predict(ensemble, "payment", _build_payment_features, reqs)
             day_name = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][dow]
-            fig = plot_sweep(
-                sweep_hours, sw["forecast"], sw["lower_bound"], sw["upper_bound"],
-                hour, f"Transaction Volume by Hour ({day_name})",
-                "Hour of Day", "Predicted Volume",
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            mask = X_test["day_of_week"] == dow
+            if mask.sum() > 0:
+                df_plot = pd.DataFrame({
+                    "hour": X_test.loc[mask, "hour_of_day"].values,
+                    "actual": y_test[mask].values,
+                    "pred": pred["forecast"][mask.values],
+                    "lower": pred["lower_bound"][mask.values],
+                    "upper": pred["upper_bound"][mask.values],
+                })
+                grouped = df_plot.groupby("hour").mean().reset_index()
 
-        with st.expander("Test Set: Actual vs Predicted"):
-            features, target = engineer_payment_features(payment_df)
-            split = int(len(features) * 0.8)
-            X_test, y_test = features.iloc[split:], target.iloc[split:]
-            pred_result = ensemble.predict("payment", X_test)
-            sl = min(300, len(y_test))
-            fig2 = plot_actual_vs_predicted(
-                y_test.values[:sl], pred_result["forecast"][:sl],
-                pred_result["lower_bound"][:sl], pred_result["upper_bound"][:sl],
-                "Payment: Actual vs Predicted (Test Set)",
-            )
-            st.plotly_chart(fig2, use_container_width=True)
+                fig = plot_grouped(
+                    grouped["hour"].tolist(),
+                    grouped["actual"].tolist(),
+                    grouped["pred"].tolist(),
+                    grouped["lower"].tolist(),
+                    grouped["upper"].tolist(),
+                    hour,
+                    f"Transaction Volume by Hour ({day_name})",
+                    "Hour of Day", "Volume",
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.subheader("Model Comparison")
-                xgb_p = ensemble.predict_single_xgb("payment", X_test)
-                lgbm_p = ensemble.predict_single_lgbm("payment", X_test)
-                avg_p = ensemble.predict_simple_avg("payment", X_test)
-                st.dataframe(metrics_table(y_test.values, xgb_p, lgbm_p, avg_p, pred_result["forecast"]), hide_index=True)
+        st.subheader("Model Comparison")
+        st.dataframe(metrics_table(y_test.values, xgb_p, lgbm_p, avg_p, pred["forecast"]), hide_index=True)
 
 
 if __name__ == "__main__":
