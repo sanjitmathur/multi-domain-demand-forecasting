@@ -76,7 +76,8 @@ src/
   models/         # DomainModel, EnsembleForecaster, baselines
   evaluation/     # Metrics (RMSE, MAE, MAPE, SMAPE, R²)
 api/              # FastAPI app with prediction endpoints
-dashboard/        # Streamlit app with 3 domain tabs
+dashboard/        # Streamlit multi-page app
+  pages/          # Model Architecture, Evaluation, Feature Importance, Uncertainty, System Design, Diagnostics, Ablation
 data/             # Generated CSV datasets
 models/saved/     # Trained model artifacts
 results/          # Evaluation results
@@ -96,4 +97,4 @@ Raw Data → Feature Engineering → [XGBoost, LightGBM] → Ridge Meta-Learner 
 
 ## Tech Stack
 
-Python, XGBoost, LightGBM, scikit-learn, pandas, FastAPI, Streamlit, Plotly
+Python, XGBoost, LightGBM, scikit-learn, SHAP, pandas, FastAPI, Streamlit, Plotly
