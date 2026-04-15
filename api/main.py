@@ -1,10 +1,12 @@
 """FastAPI app for demand forecasting predictions."""
 
+from contextlib import asynccontextmanager
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pathlib import Path
 
 from api.schemas import (
     AirlineRequest, ECommerceRequest, PaymentRequest,
@@ -12,23 +14,15 @@ from api.schemas import (
 )
 from src.models.ensemble import EnsembleForecaster
 
-app = FastAPI(title="Multi-Domain Demand Forecasting API", version="1.0.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODELS_DIR = PROJECT_ROOT / "models" / "saved"
 
 ensemble: EnsembleForecaster | None = None
 
 
-@app.on_event("startup")
-def load_models():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load models on startup. Gracefully degrade to 503 responses if absent."""
     global ensemble
     ensemble = EnsembleForecaster()
     try:
@@ -37,6 +31,22 @@ def load_models():
     except Exception as e:
         print(f"Warning: Could not load models: {e}")
         ensemble = None
+    yield
+
+
+app = FastAPI(
+    title="Multi-Domain Demand Forecasting API",
+    version="1.0.0",
+    description="Ensemble (XGBoost + LightGBM + Ridge meta) forecasting with P10/P90 intervals",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def _build_airline_features(req: AirlineRequest) -> pd.DataFrame:
@@ -193,7 +203,7 @@ def _make_response(result: dict, idx: int = 0) -> ForecastResponse:
         forecast=round(float(result["forecast"][idx]), 2),
         lower_bound=round(float(result["lower_bound"][idx]), 2),
         upper_bound=round(float(result["upper_bound"][idx]), 2),
-        confidence=round(float(result["confidence"][idx]), 4),
+        interval_score=round(float(result["interval_score"][idx]), 4),
     )
 
 

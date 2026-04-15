@@ -1,0 +1,15 @@
+venv/
+.worktrees/
+.git/
+.github/
+__pycache__/
+*.pyc
+.pytest_cache/
+.streamlit/
+dashboard/
+data/
+tests/
+docs/
+*.md
+*.stackdump
+.claude/

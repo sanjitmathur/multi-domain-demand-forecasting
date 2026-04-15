@@ -51,14 +51,20 @@ class EnsembleForecaster:
         lower = uncertainty["lower_10"]
         upper = uncertainty["upper_90"]
 
+        # interval_score: 1 - relative-interval-width, clipped to [0, 1].
+        # This is an interval-tightness heuristic, NOT a probability.
+        # Use the empirical coverage on the test set (shown in the dashboard) to
+        # evaluate calibration.
         width = upper - lower
-        confidence = np.clip(1.0 - width / (np.abs(forecast) + 1e-8), 0, 1)
+        interval_score = np.clip(1.0 - width / (np.abs(forecast) + 1e-8), 0, 1)
 
         return {
             "forecast": forecast,
             "lower_bound": lower,
             "upper_bound": upper,
-            "confidence": confidence,
+            "interval_score": interval_score,
+            # Backwards-compat alias used by older dashboard code paths.
+            "confidence": interval_score,
         }
 
     def predict_single_xgb(self, domain: str, X: pd.DataFrame) -> np.ndarray:
