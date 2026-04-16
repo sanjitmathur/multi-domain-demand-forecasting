@@ -132,7 +132,7 @@ _CSS = f"""
   [data-testid="stAppViewContainer"] > * {{ position: relative; z-index: 1; }}
 
   .block-container {{
-    padding-top: 1.4rem !important;
+    padding-top: 4rem !important;
     padding-bottom: 4rem !important;
     max-width: 1320px;
   }}
