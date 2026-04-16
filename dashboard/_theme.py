@@ -436,7 +436,7 @@ _CSS = f"""
   }}
 
   /* Hide Streamlit chrome we don't want */
-  #MainMenu, footer, header {{ visibility: hidden; }}
+  #MainMenu, footer {{ visibility: hidden; }}
 
   /* Plotly chart container — subtle panel */
   [data-testid="stPlotlyChart"] {{
