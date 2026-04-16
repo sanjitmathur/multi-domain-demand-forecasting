@@ -12,9 +12,15 @@ import plotly.graph_objects as go
 import streamlit as st
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+DASHBOARD_DIR = Path(__file__).resolve().parent.parent
+for _p in (str(PROJECT_ROOT), str(DASHBOARD_DIR)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-from dashboard import _theme as theme
+try:
+    from dashboard import _theme as theme
+except ImportError:
+    import _theme as theme  # type: ignore[no-redef]
 from src.features.airline_features import engineer_airline_features
 from src.features.ecommerce_features import engineer_ecommerce_features
 from src.features.payment_features import engineer_payment_features
@@ -141,13 +147,13 @@ with tab_feat:
         fig = go.Figure(go.Bar(x=df["v"], y=df["f"], orientation="h",
                                 marker_color=theme.ACCENT, opacity=0.88))
         fig.update_layout(title="XGBoost — Gain", height=480, margin=dict(l=180))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     with col2:
         df = pd.DataFrame({"f": names, "v": lgbm_imp}).sort_values("v").tail(15)
         fig = go.Figure(go.Bar(x=df["v"], y=df["f"], orientation="h",
                                 marker_color=theme.PREDICTED, opacity=0.88))
         fig.update_layout(title="LightGBM — Splits", height=480, margin=dict(l=180))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
     theme.section("Combined ranking")
     ranking = pd.DataFrame({
@@ -157,7 +163,7 @@ with tab_feat:
         "Combined": np.round(combined, 4),
     }).sort_values("Combined", ascending=False).reset_index(drop=True)
     ranking.index += 1
-    st.dataframe(ranking, use_container_width=True)
+    st.dataframe(ranking, width='stretch')
 
     # SHAP — the most rigorous interpretability signal we have.
     st.divider()
@@ -178,7 +184,7 @@ with tab_feat:
     fig = go.Figure(go.Bar(x=shap_df["v"], y=shap_df["f"], orientation="h",
                             marker_color="#C084FC", opacity=0.88))
     fig.update_layout(title="Mean |SHAP| (XGBoost)", height=480, margin=dict(l=180))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     st.caption("SHAP value distribution for top 10 features — each dot is one held-out sample.")
     top = np.argsort(shap_mean)[-10:][::-1]
@@ -194,7 +200,7 @@ with tab_feat:
                     color="Feature Value", orientation="h")
     fig2.update_coloraxes(colorscale="RdBu_r")
     fig2.update_layout(height=460, showlegend=False)
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig2, width='stretch')
 
 
 # ── System Design ────────────────────────────────────────────────────────────

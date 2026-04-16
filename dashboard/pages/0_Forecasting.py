@@ -11,10 +11,17 @@ import plotly.graph_objects as go
 import streamlit as st
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+DASHBOARD_DIR = Path(__file__).resolve().parent.parent
+for _p in (str(PROJECT_ROOT), str(DASHBOARD_DIR)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-from dashboard import _theme as theme
-from dashboard._baselines import all_baselines
+try:
+    from dashboard import _theme as theme
+    from dashboard._baselines import all_baselines
+except ImportError:
+    import _theme as theme  # type: ignore[no-redef]
+    from _baselines import all_baselines  # type: ignore[no-redef]
 from src.evaluation.metrics import rmse, mae, r_squared, rmse_pct
 from src.features.airline_features import engineer_airline_features
 from src.features.ecommerce_features import engineer_ecommerce_features
@@ -213,14 +220,14 @@ with airline_tab:
                 grouped["upper"].tolist(), days_until,
                 "Days until departure", "Bookings",
             ),
-            use_container_width=True,
+            width='stretch',
         )
 
         theme.section("Model vs baselines",
                       "Ensemble compared with base models and classical baselines on held-out data.")
         st.dataframe(
             comparison_table(y_test.values, xgb_p, lgbm_p, avg_p, pred["forecast"]),
-            hide_index=True, use_container_width=True,
+            hide_index=True, width='stretch',
             column_config={
                 "RMSE":   st.column_config.NumberColumn(help="Root Mean Squared Error — lower is better"),
                 "MAE":    st.column_config.NumberColumn(help="Mean Absolute Error — lower is better"),
@@ -290,13 +297,13 @@ with ecom_tab:
                 grouped["upper"].tolist(), None,
                 "Price ($)", "Units sold",
             ),
-            use_container_width=True,
+            width='stretch',
         )
 
         theme.section("Model vs baselines")
         st.dataframe(
             comparison_table(y_test.values, xgb_p, lgbm_p, avg_p, pred["forecast"]),
-            hide_index=True, use_container_width=True,
+            hide_index=True, width='stretch',
         )
 
 
@@ -358,11 +365,11 @@ with payment_tab:
                 grouped["upper"].tolist(), hour,
                 "Hour of day", "Volume",
             ),
-            use_container_width=True,
+            width='stretch',
         )
 
     theme.section("Model vs baselines")
     st.dataframe(
         comparison_table(y_test.values, xgb_p, lgbm_p, avg_p, pred["forecast"]),
-        hide_index=True, use_container_width=True,
+        hide_index=True, width='stretch',
     )

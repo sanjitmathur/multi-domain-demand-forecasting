@@ -1,21 +1,13 @@
+# Dashboard theme only.
+# [server] / [ui] / [browser] are intentionally omitted — Streamlit Community
+# Cloud controls its own server config and rejects overrides at runtime.
+
 [theme]
 base = "dark"
-primaryColor = "#7C5CFF"
-backgroundColor = "#0B0F17"
-secondaryBackgroundColor = "#141A24"
-textColor = "#E6E8EC"
-font = "sans serif"
+primaryColor = "#8B7CFF"
+backgroundColor = "#07090F"
+secondaryBackgroundColor = "#0E1320"
+textColor = "#F4F6FB"
 
 [client]
 toolbarMode = "minimal"
-showErrorDetails = true
-
-[server]
-runOnSave = false
-headless = false
-
-[browser]
-gatherUsageStats = false
-
-[ui]
-hideTopBar = false

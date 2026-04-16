@@ -11,10 +11,17 @@ import plotly.graph_objects as go
 import streamlit as st
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+DASHBOARD_DIR = Path(__file__).resolve().parent.parent
+for _p in (str(PROJECT_ROOT), str(DASHBOARD_DIR)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-from dashboard import _theme as theme
-from dashboard._baselines import all_baselines
+try:
+    from dashboard import _theme as theme
+    from dashboard._baselines import all_baselines
+except ImportError:
+    import _theme as theme  # type: ignore[no-redef]
+    from _baselines import all_baselines  # type: ignore[no-redef]
 from src.evaluation.metrics import rmse, mae, r_squared, rmse_pct
 from src.features.airline_features import engineer_airline_features
 from src.features.ecommerce_features import engineer_ecommerce_features
@@ -185,7 +192,7 @@ with tab_models:
                   "A demand-forecasting model that doesn't beat naive baselines isn't a model.")
     c1, c2 = st.columns([3, 1])
     with c1:
-        st.dataframe(table, hide_index=True, use_container_width=True,
+        st.dataframe(table, hide_index=True, width='stretch',
                      column_config={
                          "RMSE %": st.column_config.NumberColumn(format="%.2f%%"),
                      })
@@ -211,7 +218,7 @@ with tab_models:
             name="Perfect",
         ))
         fig.update_layout(xaxis_title="Actual", yaxis_title="Predicted", height=400)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     with c2:
         fig = go.Figure()
         fig.add_trace(go.Histogram(
@@ -220,7 +227,7 @@ with tab_models:
         fig.add_vline(x=0, line_dash="dash", line_color=theme.HIGHLIGHT)
         fig.update_layout(xaxis_title="Residual (Actual − Predicted)",
                           yaxis_title="Count", height=400)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
 
 # ── Uncertainty ─────────────────────────────────────────────────────────────
@@ -242,7 +249,7 @@ with tab_uncert:
                                           symbol=theme.SHAPE_ACTUAL)))
     fig.update_layout(xaxis_title="Test Sample", yaxis_title="Value", height=420,
                       legend=dict(orientation="h", yanchor="bottom", y=1.02))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     coverage = float(np.mean((y >= lower) & (y <= upper)))
     avg_width = float(np.mean(upper - lower))
@@ -268,7 +275,7 @@ with tab_ablation:
     theme.section("Feature-group ablation",
                   "Zeroing out each group in turn and measuring RMSE increase. Higher Δ% = more critical.")
     abl = run_ablation(ens, domain)
-    st.dataframe(abl, hide_index=True, use_container_width=True,
+    st.dataframe(abl, hide_index=True, width='stretch',
                  column_config={"RMSE Δ%": st.column_config.NumberColumn(format="%.2f%%")})
 
     if len(abl) > 1:
@@ -295,12 +302,12 @@ with tab_data:
         st.dataframe(pd.DataFrame({"Column": missing.index,
                                     "Missing": missing.values,
                                     "% Missing": (missing.values / len(df) * 100).round(2)}),
-                     hide_index=True, use_container_width=True)
+                     hide_index=True, width='stretch')
     else:
         st.success("No missing values detected.")
 
     theme.section("Numeric summary")
-    st.dataframe(df.describe().T.round(3), use_container_width=True)
+    st.dataframe(df.describe().T.round(3), width='stretch')
 
     theme.section(f"Target distribution — `{target_col}`")
     fig = go.Figure()
@@ -309,7 +316,7 @@ with tab_data:
     fig.add_vline(x=df[target_col].mean(), line_dash="dash", line_color=theme.HIGHLIGHT,
                    annotation_text=f"mean={df[target_col].mean():.1f}")
     fig.update_layout(xaxis_title=target_col, yaxis_title="Count", height=340)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     theme.section("Feature correlations with target")
     num = df.select_dtypes(include=[np.number])
@@ -321,4 +328,4 @@ with tab_data:
         ))
         fig.update_layout(title="Pearson correlation with target",
                           height=max(320, len(corr) * 22), margin=dict(l=180))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
